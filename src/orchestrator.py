@@ -11,6 +11,7 @@ from src.core.config import Config
 from src.core.logger import log, setup_logging
 from src.core.database import init_db
 from src.core.kalshi_client import KalshiClient, KalshiMockClient
+from src.data.perplexity_search import gather_perplexity_data
 from src.agents.debate.debate_engine import run_debate
 from src.agents.decision.sanity_checker import run_sanity_check
 from src.agents.risk.kelly_sizer import calculate_dynamic_kelly
@@ -99,6 +100,12 @@ def gather_data_for_market(market: dict, category: str, config: Config) -> dict:
             log.warning("data.news_error", error=str(e))
     else:
         data['recent_news'] = []
+
+    # Perplexity — aktualne dane z internetu
+    perplexity_data = gather_perplexity_data(market['title'], category)
+    if perplexity_data:
+        data['live_research'] = perplexity_data
+        log.info("data.perplexity_ok", ticker=market['ticker'], keys=list(perplexity_data.keys()))
 
     return data
 
