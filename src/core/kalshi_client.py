@@ -13,6 +13,7 @@ from pathlib import Path
 import requests
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives.asymmetric.padding import PSS, MGF1
 
 from src.core.logger import log
 
@@ -24,7 +25,7 @@ class KalshiClient:
         self.base_url = (
             "https://demo-api.kalshi.co/trade-api/v2"
             if env == "demo"
-            else "https://trading-api.kalshi.com/trade-api/v2"
+            else "https://api.elections.kalshi.com/trade-api/v2"
         )
         self.private_key = None
         if key_id and Path(private_key_path).exists():
@@ -40,9 +41,13 @@ class KalshiClient:
         if not self.private_key:
             return {"Content-Type": "application/json"}
         timestamp = str(int(time.time() * 1000))
-        message = f"{timestamp}{method.upper()}{path}".encode()
+        # Kalshi wymaga pełnej ścieżki z prefiksem /trade-api/v2 w podpisie
+        full_path = f"/trade-api/v2{path}"
+        message = f"{timestamp}{method.upper()}{full_path}".encode()
         signature = self.private_key.sign(
-            message, padding.PKCS1v15(), hashes.SHA256()
+            message,
+            PSS(mgf=MGF1(hashes.SHA256()), salt_length=PSS.DIGEST_LENGTH),
+            hashes.SHA256(),
         )
         return {
             "KALSHI-ACCESS-KEY": self.key_id,
@@ -74,9 +79,23 @@ class KalshiClient:
     # ── Rynki ────────────────────────────────────────────────────────────────
 
     def get_markets(self, status: str = "open", limit: int = 200) -> list[dict]:
-        path = f"/markets?status={status}&limit={limit}"
-        data = self._get(path)
-        markets = data.get("markets", [])
+        # Pobieraj przez /events z nested markets — daje dostęp do cen i wolumenów
+        data = self._get(f"/events?status={status}&limit=100&with_nested_markets=true")
+        events = data.get("events", [])
+        markets = []
+        for e in events:
+            event_title = e.get("title", "")
+            for m in e.get("markets", []):
+                yes_bid_d = float(m.get("yes_bid_dollars") or 0)
+                yes_ask_d = float(m.get("yes_ask_dollars") or 0)
+                vol = float(m.get("volume_24h_fp") or 0)
+                markets.append({
+                    **m,
+                    "title": event_title or m.get("title", ""),
+                    "yes_bid": round(yes_bid_d * 100),
+                    "yes_ask": round(yes_ask_d * 100),
+                    "volume_24h": vol,
+                })
         log.info("kalshi.markets_fetched", count=len(markets), status=status)
         return markets
 
