@@ -1,0 +1,27 @@
+# Sekrety — NIGDY nie commituj
+.env
+secrets/
+*.pem
+*.key
+*private*
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+
+# Baza danych
+memory/*.db
+memory/*.db-shm
+memory/*.db-wal
+
+# Logi
+logs/*.log
+
+# Systemo
+.DS_Store
+*.tmp
