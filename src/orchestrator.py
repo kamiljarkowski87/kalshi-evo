@@ -5,7 +5,7 @@ Skanuje rynki co 5 minut, uruchamia debatę agentów i składa zakłady.
 import json
 import schedule
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from src.core.config import Config
 from src.core.logger import log, setup_logging
@@ -111,7 +111,7 @@ def gather_data_for_market(market: dict, category: str, config: Config) -> dict:
 
 
 def scan_markets(kalshi) -> list[dict]:
-    all_markets = kalshi.get_markets(status="open", limit=200)
+    all_markets = kalshi.get_markets(status="open", limit=500)
     candidates = [
         m for m in all_markets
         if m.get('volume_24h', 0) >= 5000 and 15 <= m.get('yes_bid', 0) <= 85
