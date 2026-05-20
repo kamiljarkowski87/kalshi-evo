@@ -1,0 +1,16 @@
+[Unit]
+Description=AI Trading System
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/claude-runner/ai-trading-system
+EnvironmentFile=/home/claude-runner/ai-trading-system/.env
+ExecStart=/home/claude-runner/ai-trading-system/.venv/bin/python main.py
+Restart=on-failure
+RestartSec=30
+StandardOutput=append:/home/claude-runner/ai-trading-system/logs/service.log
+StandardError=append:/home/claude-runner/ai-trading-system/logs/service.log
+
+[Install]
+WantedBy=default.target
