@@ -58,6 +58,12 @@ GENERALIST_AGENTS = [
     {"name": "devil_advocate","role": "adwokat diabła",      "specialty": "zawsze szuka powodów żeby NIE obstawiać"},
 ]
 
+SPECIALIST_AGENTS["ai_tech"] = [
+    {"name": "ai_industry_analyst", "role": "analityk branży AI",        "specialty": "rynek AI, OpenAI, Anthropic, Google DeepMind, startupy AI, rundy finansowania, IPO"},
+    {"name": "tech_ipo_analyst",    "role": "analityk IPO i wycen tech", "specialty": "wyceny spółek technologicznych, historia IPO, rynki prywatne vs publiczne"},
+    {"name": "devil_advocate",      "role": "adwokat diabła",            "specialty": "zawsze szuka powodów żeby NIE obstawiać"},
+]
+
 
 def classify_market(title: str) -> str:
     t = title.lower()
@@ -71,6 +77,8 @@ def classify_market(title: str) -> str:
         return 'politics'
     if any(w in t for w in ['bitcoin', 'btc', 'eth', 'crypto', 'ethereum', 'solana']):
         return 'crypto'
+    if any(w in t for w in ['openai', 'anthropic', 'deepmind', 'ipo', 'ai company', 'artificial intelligence', 'llm', 'gpt', 'claude']):
+        return 'ai_tech'
     return 'other'
 
 
