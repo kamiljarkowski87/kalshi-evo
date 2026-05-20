@@ -16,7 +16,7 @@ from src.agents.debate.debate_engine import run_debate
 from src.agents.decision.sanity_checker import run_sanity_check
 from src.agents.risk.kelly_sizer import calculate_dynamic_kelly
 from src.agents.risk.risk_manager import RiskManager
-from src.agents.learning.reflect_agent import run_weekly_reflection, get_recent_lessons
+from src.agents.learning.reflect_agent import run_weekly_reflection, run_open_position_reflection, get_recent_lessons
 from src.agents.learning.strategy_evolver import run_monthly_evolution
 from src.agents.learning.calibrator import run_calibration_check
 from src.agents.learning.source_evaluator import evaluate_sources
@@ -227,6 +227,7 @@ def main():
     tracker = PerformanceTracker(config.db_path)
     trader = PaperTrader(config)
     markets_scanned = [0]
+    cycle_counter = [0]
 
     print("\n🤖 KALSHI EVO SYSTEM — START")
     print(f"   Tryb: {config.trading_mode.upper()}")
@@ -242,11 +243,21 @@ def main():
 
     reporter.send("🤖 *Kalshi Evo System uruchomiony*\nTryb: paper trading\nSkanowanie co 5 minut\nBankroll: $" + str(config.starting_bankroll))
 
+    def main_cycle_with_learning(**kwargs):
+        main_cycle(**kwargs)
+        cycle_counter[0] += 1
+        # Co 12 cykli (~1h) refleksja na otwartych pozycjach
+        if cycle_counter[0] % 12 == 0:
+            log.info("reflect.open.trigger", cycle=cycle_counter[0])
+            run_open_position_reflection(config.db_path, config.reflections_path)
+
     # Uruchom natychmiast
-    main_cycle(kalshi, config, trader, risk_mgr, reporter, tracker, markets_scanned)
+    main_cycle_with_learning(kalshi=kalshi, config=config, trader=trader,
+                             risk_mgr=risk_mgr, reporter=reporter, tracker=tracker,
+                             markets_scanned_counter=markets_scanned)
 
     # Harmonogram
-    schedule.every(5).minutes.do(main_cycle, kalshi=kalshi, config=config, trader=trader,
+    schedule.every(5).minutes.do(main_cycle_with_learning, kalshi=kalshi, config=config, trader=trader,
                                   risk_mgr=risk_mgr, reporter=reporter, tracker=tracker,
                                   markets_scanned_counter=markets_scanned)
     schedule.every().day.at("23:59").do(send_daily_report, trader=trader, tracker=tracker,
