@@ -26,7 +26,7 @@ def run_sanity_check(market: dict, debate_result: dict, portfolio: dict, recent_
 
     # 4. Jakość debaty
     quality = debate_result.get('synthesis', {}).get('debate_quality', 'weak')
-    checks['debate_quality'] = quality in ['strong', 'medium']
+    checks['debate_quality'] = quality in ['strong', 'medium', 'moderate']
     if not checks['debate_quality']:
         reasons.append(f"Słaba debata: {quality}")
 
