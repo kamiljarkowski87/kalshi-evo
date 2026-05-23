@@ -202,6 +202,48 @@ def main_cycle(kalshi, config: Config, trader: PaperTrader, risk_mgr: RiskManage
     log.info("orchestrator.cycle_done", candidates=len(candidates))
 
 
+def check_and_settle_positions(kalshi, trader: PaperTrader, reporter: TelegramReporter) -> None:
+    """Sprawdza otwarte zakłady i rozstrzyga te, które Kalshi już zamknął."""
+    import sqlite3
+    conn = sqlite3.connect(trader.db_path)
+    cur = conn.cursor()
+    cur.execute("SELECT order_id, ticker, side, title FROM trades WHERE status='open'")
+    open_trades = cur.fetchall()
+    conn.close()
+
+    if not open_trades:
+        return
+
+    settled = 0
+    for order_id, ticker, side, title in open_trades:
+        try:
+            data = kalshi.get_market(ticker)
+            market = data.get('market', data)
+            status = market.get('status', '')
+            if status not in ('finalized', 'settled', 'resolved', 'determined'):
+                continue
+            result = market.get('result', '')
+            if not result:
+                continue
+            won = (side == 'yes' and result == 'yes') or (side == 'no' and result == 'no')
+            pnl = trader.settle_position(order_id, won)
+            settled += 1
+            log.info("settle.done", ticker=ticker, side=side, result=result, won=won, pnl=pnl)
+            emoji = "✅" if won else "❌"
+            reporter.send(
+                f"{emoji} *Zakład rozstrzygnięty*\n"
+                f"📌 {title or ticker}\n"
+                f"Strona: {side.upper()} | Wynik rynku: {result.upper()}\n"
+                f"P&L: ${pnl:+.2f}\n"
+                f"Bankroll: ${trader.get_bankroll():.2f}"
+            )
+        except Exception as e:
+            log.warning("settle.error", ticker=ticker, error=str(e))
+
+    if settled > 0:
+        log.info("settle.batch_done", settled=settled)
+
+
 def send_daily_report(trader: PaperTrader, tracker: PerformanceTracker,
                       reporter: TelegramReporter, markets_scanned: list) -> None:
     stats = tracker.get_portfolio_state(trader.get_bankroll())
@@ -234,6 +276,7 @@ def main():
     risk_mgr = RiskManager(config)
     tracker = PerformanceTracker(config.db_path)
     trader = PaperTrader(config)
+    trader.restore_open_positions()
     markets_scanned = [0]
     cycle_counter = [0]
 
@@ -254,9 +297,10 @@ def main():
     def main_cycle_with_learning(**kwargs):
         main_cycle(**kwargs)
         cycle_counter[0] += 1
-        # Co 12 cykli (~1h) refleksja na otwartych pozycjach
+        # Co 12 cykli (~1h) sprawdź wyniki zakładów i refleksja
         if cycle_counter[0] % 12 == 0:
             log.info("reflect.open.trigger", cycle=cycle_counter[0])
+            check_and_settle_positions(kalshi, trader, reporter)
             run_open_position_reflection(config.db_path, config.reflections_path)
 
     # Uruchom natychmiast
@@ -268,6 +312,7 @@ def main():
     schedule.every(5).minutes.do(main_cycle_with_learning, kalshi=kalshi, config=config, trader=trader,
                                   risk_mgr=risk_mgr, reporter=reporter, tracker=tracker,
                                   markets_scanned_counter=markets_scanned)
+    schedule.every(1).hours.do(check_and_settle_positions, kalshi=kalshi, trader=trader, reporter=reporter)
     schedule.every().day.at("23:59").do(send_daily_report, trader=trader, tracker=tracker,
                                          reporter=reporter, markets_scanned=markets_scanned)
     schedule.every().sunday.at("23:00").do(run_weekly_jobs, config=config, reporter=reporter)

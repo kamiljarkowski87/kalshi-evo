@@ -61,10 +61,24 @@ class PaperTrader:
 
     def settle_position(self, order_id: str, won: bool) -> float:
         pos = self._positions.get(order_id)
-        if not pos:
-            return 0.0
-        payout = pos['contracts'] * 1.0 if won else 0.0
-        pnl = payout - pos['cost']
+
+        if pos:
+            payout = pos['contracts'] * 1.0 if won else 0.0
+            pnl = payout - pos['cost']
+            del self._positions[order_id]
+        else:
+            # Pozycja nie jest w pamięci (np. po restarcie) — czytamy z bazy
+            conn = sqlite3.connect(self.db_path)
+            cur = conn.cursor()
+            cur.execute("SELECT contracts, bet_usd FROM trades WHERE order_id=?", (order_id,))
+            row = cur.fetchone()
+            conn.close()
+            if not row:
+                return 0.0
+            contracts, bet_usd = row
+            payout = float(contracts) if won else 0.0
+            pnl = payout - float(bet_usd)
+
         self._bankroll += payout
         outcome = "WIN" if won else "LOSS"
 
@@ -74,6 +88,25 @@ class PaperTrader:
         conn.commit()
         conn.close()
 
-        del self._positions[order_id]
         log.info("paper.settled", order_id=order_id, outcome=outcome, pnl=pnl, bankroll=self._bankroll)
         return pnl
+
+    def restore_open_positions(self) -> None:
+        """Odtwarza otwarte pozycje z bazy po restarcie systemu."""
+        conn = sqlite3.connect(self.db_path)
+        cur = conn.cursor()
+        cur.execute("SELECT order_id, ticker, side, price_cents, contracts, bet_usd, created_at FROM trades WHERE status='open'")
+        rows = cur.fetchall()
+        conn.close()
+        for order_id, ticker, side, price_cents, contracts, bet_usd, opened_at in rows:
+            self._positions[order_id] = {
+                "ticker": ticker,
+                "side": side,
+                "price_cents": price_cents,
+                "contracts": contracts,
+                "cost": bet_usd,
+                "opened_at": opened_at,
+            }
+            self._bankroll -= float(bet_usd)
+        if rows:
+            log.info("paper.restored", count=len(rows), bankroll=self._bankroll)
