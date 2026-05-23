@@ -41,7 +41,7 @@ Odpowiedz WYŁĄCZNIE surowym JSON (bez markdown, bez ```):
 def _llm_call(system: str, messages: list) -> dict:
     resp = client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=2000,
+        max_tokens=400,
         system=system,
         messages=messages,
     )
@@ -71,7 +71,21 @@ def _llm_call(system: str, messages: list) -> dict:
     raise ValueError(f"Nie można sparsować JSON: {text[:200]}")
 
 
+def _trim_data_package(data: dict, max_chars: int = 800) -> dict:
+    """Przycina duże pola tekstowe żeby nie przepalać tokenów."""
+    trimmed = {}
+    for k, v in data.items():
+        if isinstance(v, str) and len(v) > max_chars:
+            trimmed[k] = v[:max_chars] + "…"
+        elif isinstance(v, dict):
+            trimmed[k] = _trim_data_package(v, max_chars)
+        else:
+            trimmed[k] = v
+    return trimmed
+
+
 def run_debate(market: dict, data_package: dict, agents: list) -> dict:
+    trimmed_data = _trim_data_package(data_package)
     context = f"""RYNEK: {market['title']}
 PYTANIE: {market.get('yes_sub_title', market['title'])}
 AKTUALNA CENA YES: {market['yes_bid']}¢ (rynek szacuje: {market['yes_bid']}% szans)
@@ -79,7 +93,7 @@ DEADLINE: {market.get('close_time', 'N/A')[:10]}
 VOLUME 24H: ${market.get('volume_24h', 0):,.0f}
 
 ZEBRANE DANE:
-{json.dumps(data_package, indent=2, ensure_ascii=False)}"""
+{json.dumps(trimmed_data, indent=2, ensure_ascii=False)}"""
 
     # RUNDA 1 — niezależna analiza
     round1 = {}

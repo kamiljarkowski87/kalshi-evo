@@ -159,8 +159,8 @@ def main_cycle(kalshi, config: Config, trader: PaperTrader, risk_mgr: RiskManage
     portfolio = tracker.get_portfolio_state(trader.get_bankroll())
     recent_trades = tracker.get_recent_trades(hours=24)
 
-    # Analizuj max 10 kandydatów per cykl (rate limit AI)
-    for market in candidates[:10]:
+    # Analizuj max 5 kandydatów per cykl (oszczędność tokenów)
+    for market in candidates[:5]:
         try:
             category = market.get('category', 'other')
             agents = SPECIALIST_AGENTS.get(category, GENERALIST_AGENTS)
