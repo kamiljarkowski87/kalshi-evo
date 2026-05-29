@@ -119,11 +119,25 @@ def gather_data_for_market(market: dict, category: str, config: Config) -> dict:
 
 
 def scan_markets(kalshi) -> list[dict]:
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
     all_markets = kalshi.get_markets(status="open", limit=500)
-    candidates = [
-        m for m in all_markets
-        if m.get('volume_24h', 0) >= 5000 and 15 <= m.get('yes_bid', 0) <= 85
-    ]
+    candidates = []
+    for m in all_markets:
+        if m.get('volume_24h', 0) < 100:
+            continue
+        if not (15 <= m.get('yes_bid', 0) <= 85):
+            continue
+        close_time = m.get('close_time', '')
+        if close_time:
+            try:
+                close_dt = datetime.fromisoformat(close_time.replace('Z', '+00:00'))
+                days_left = (close_dt - now).days
+                if days_left > 90 or days_left < 1:
+                    continue
+            except Exception:
+                pass
+        candidates.append(m)
     for m in candidates:
         m['category'] = classify_market(m.get('title', ''))
     candidates.sort(key=lambda x: x.get('volume_24h', 0), reverse=True)
