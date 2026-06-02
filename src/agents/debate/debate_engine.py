@@ -38,9 +38,10 @@ Odpowiedz WYŁĄCZNIE surowym JSON (bez markdown, bez ```):
 {{"final_probability":0.0,"confidence":"high","reasoning":"krótki powód","agent_weights_applied":{{}},"outlier_detected":false,"outlier_agent":null,"debate_quality":"strong","recommendation":"bet"}}"""
 
 
-def _llm_call(system: str, messages: list) -> dict:
+def _llm_call(system: str, messages: list, fast: bool = False) -> dict:
+    model = "claude-haiku-4-5-20251001" if fast else "claude-sonnet-4-6"
     resp = client.messages.create(
-        model="claude-sonnet-4-6",
+        model=model,
         max_tokens=400,
         system=system,
         messages=messages,
@@ -100,7 +101,7 @@ ZEBRANE DANE:
     for agent in agents:
         try:
             system = DEBATE_SYSTEM.format(role=agent['role'], specialty=agent['specialty'])
-            result = _llm_call(system, [{"role": "user", "content": context}])
+            result = _llm_call(system, [{"role": "user", "content": context}], fast=True)
             round1[agent['name']] = result
             log.info("debate.round1", agent=agent['name'], prob=result.get('probability'))
         except Exception as e:
@@ -132,7 +133,7 @@ Odpowiedz w tym samym formacie JSON, ustaw "updated_from_debate": true/false."""
                 {"role": "user", "content": context},
                 {"role": "assistant", "content": json.dumps(my_r1)},
                 {"role": "user", "content": update_msg},
-            ])
+            ], fast=True)
             round2[agent['name']] = result
             log.info("debate.round2", agent=agent['name'], prob=result.get('probability'), updated=result.get('updated_from_debate'))
         except Exception as e:

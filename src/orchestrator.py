@@ -133,7 +133,7 @@ def scan_markets(kalshi) -> list[dict]:
             try:
                 close_dt = datetime.fromisoformat(close_time.replace('Z', '+00:00'))
                 days_left = (close_dt - now).days
-                if days_left > 90 or days_left < 1:
+                if days_left > 365 or days_left < 1:
                     continue
             except Exception:
                 pass
@@ -173,8 +173,8 @@ def main_cycle(kalshi, config: Config, trader: PaperTrader, risk_mgr: RiskManage
     portfolio = tracker.get_portfolio_state(trader.get_bankroll())
     recent_trades = tracker.get_recent_trades(hours=24)
 
-    # Analizuj max 5 kandydatów per cykl (oszczędność tokenów)
-    for market in candidates[:5]:
+    # Analizuj max 2 kandydatów per cykl (oszczędność tokenów)
+    for market in candidates[:2]:
         try:
             category = market.get('category', 'other')
             agents = SPECIALIST_AGENTS.get(category, GENERALIST_AGENTS)
