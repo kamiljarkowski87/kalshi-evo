@@ -11,6 +11,7 @@ from src.core.config import Config
 from src.core.logger import log, setup_logging
 from src.core.database import init_db
 from src.core.kalshi_client import KalshiClient, KalshiMockClient
+from src.core.polymarket_client import PolymarketClient
 from src.data.perplexity_search import gather_perplexity_data
 from src.agents.debate.debate_engine import run_debate
 from src.agents.decision.sanity_checker import run_sanity_check
@@ -121,9 +122,22 @@ def gather_data_for_market(market: dict, category: str, config: Config) -> dict:
 def scan_markets(kalshi) -> list[dict]:
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc)
-    all_markets = kalshi.get_markets(status="open", limit=500)
     candidates = []
-    for m in all_markets:
+
+    # 1. Polymarket — priorytet, rynki krótkoterminowe (1-30 dni)
+    try:
+        poly = PolymarketClient()
+        poly_markets = poly.get_markets(max_days=30, min_volume_24h=500)
+        for m in poly_markets:
+            m['category'] = classify_market(m.get('title', ''))
+            candidates.append(m)
+        log.info("scan.polymarket_done", count=len(poly_markets))
+    except Exception as e:
+        log.warning("scan.polymarket_error", error=str(e))
+
+    # 2. Kalshi — uzupełnienie, rynki długoterminowe
+    kalshi_markets = kalshi.get_markets(status="open", limit=500)
+    for m in kalshi_markets:
         if m.get('volume_24h', 0) < 100:
             continue
         if not (15 <= m.get('yes_bid', 0) <= 85):
@@ -135,13 +149,20 @@ def scan_markets(kalshi) -> list[dict]:
                 days_left = (close_dt - now).days
                 if days_left > 3650 or days_left < 1:
                     continue
+                m['days_left'] = days_left
             except Exception:
                 pass
-        candidates.append(m)
-    for m in candidates:
+        m['source'] = 'kalshi'
         m['category'] = classify_market(m.get('title', ''))
-    candidates.sort(key=lambda x: x.get('volume_24h', 0), reverse=True)
-    return candidates
+        candidates.append(m)
+
+    # Sortuj: najpierw Polymarket (krótsze), potem Kalshi (wolumen)
+    poly_cands = [m for m in candidates if m.get('source') == 'polymarket']
+    kalshi_cands = [m for m in candidates if m.get('source') != 'polymarket']
+    poly_cands.sort(key=lambda x: x.get('days_left', 999))
+    kalshi_cands.sort(key=lambda x: x.get('volume_24h', 0), reverse=True)
+
+    return poly_cands + kalshi_cands
 
 
 def print_top_markets(markets: list[dict], n: int = 10) -> None:
