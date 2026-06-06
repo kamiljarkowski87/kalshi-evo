@@ -133,7 +133,7 @@ def scan_markets(kalshi) -> list[dict]:
             try:
                 close_dt = datetime.fromisoformat(close_time.replace('Z', '+00:00'))
                 days_left = (close_dt - now).days
-                if days_left > 365 or days_left < 1:
+                if days_left > 3650 or days_left < 1:
                     continue
             except Exception:
                 pass
@@ -252,7 +252,17 @@ def check_and_settle_positions(kalshi, trader: PaperTrader, reporter: TelegramRe
                 f"Bankroll: ${trader.get_bankroll():.2f}"
             )
         except Exception as e:
-            log.warning("settle.error", ticker=ticker, error=str(e))
+            err = str(e)
+            if "404" in err:
+                # Rynek usunięty z Kalshi — zamknij pozycję jako nierozstrzygniętą
+                import sqlite3
+                conn2 = sqlite3.connect(trader.db_path)
+                conn2.execute("UPDATE trades SET status='cancelled' WHERE order_id=?", (order_id,))
+                conn2.commit()
+                conn2.close()
+                log.info("settle.cancelled", ticker=ticker, reason="market_not_found_404")
+            else:
+                log.warning("settle.error", ticker=ticker, error=err)
 
     if settled > 0:
         log.info("settle.batch_done", settled=settled)
