@@ -333,7 +333,7 @@ def main():
                              markets_scanned_counter=markets_scanned)
 
     # Harmonogram
-    schedule.every(5).minutes.do(main_cycle_with_learning, kalshi=kalshi, config=config, trader=trader,
+    schedule.every(30).minutes.do(main_cycle_with_learning, kalshi=kalshi, config=config, trader=trader,
                                   risk_mgr=risk_mgr, reporter=reporter, tracker=tracker,
                                   markets_scanned_counter=markets_scanned)
     schedule.every(1).hours.do(check_and_settle_positions, kalshi=kalshi, trader=trader, reporter=reporter)
