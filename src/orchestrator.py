@@ -230,6 +230,26 @@ def main_cycle(kalshi, config: Config, trader: PaperTrader, risk_mgr: RiskManage
             reporter.send_trade_entry(market, debate, bet, side)
             log.info("orchestrator.bet_placed", ticker=market['ticker'], side=side, bet_usd=bet['bet_usd'])
 
+            # Zapisz pełną debatę do bazy (pamięć historyczna bota)
+            try:
+                import sqlite3
+                conn = sqlite3.connect(config.db_path)
+                cur = conn.cursor()
+                cur.execute("SELECT id FROM trades WHERE order_id=?", (result['order_id'],))
+                row = cur.fetchone()
+                if row:
+                    conn.execute(
+                        "INSERT INTO debate_logs (trade_id, ticker, round1_json, round2_json, synthesis_json) VALUES (?,?,?,?,?)",
+                        (row[0], market['ticker'],
+                         json.dumps(debate['round1'], ensure_ascii=False),
+                         json.dumps(debate['round2'], ensure_ascii=False),
+                         json.dumps(debate['synthesis'], ensure_ascii=False))
+                    )
+                    conn.commit()
+                conn.close()
+            except Exception as e:
+                log.error("orchestrator.debate_log_error", error=str(e))
+
         except Exception as e:
             log.error("orchestrator.market_error", ticker=market.get('ticker'), error=str(e))
             continue
@@ -238,7 +258,7 @@ def main_cycle(kalshi, config: Config, trader: PaperTrader, risk_mgr: RiskManage
 
 
 def check_and_settle_positions(kalshi, trader: PaperTrader, reporter: TelegramReporter) -> None:
-    """Sprawdza otwarte zakłady i rozstrzyga te, które Kalshi już zamknął."""
+    """Sprawdza otwarte zakłady i rozstrzyga te, które zostały już zamknięte."""
     import sqlite3
     conn = sqlite3.connect(trader.db_path)
     cur = conn.cursor()
@@ -249,34 +269,50 @@ def check_and_settle_positions(kalshi, trader: PaperTrader, reporter: TelegramRe
     if not open_trades:
         return
 
+    poly_client = None
     settled = 0
     for order_id, ticker, side, title in open_trades:
         try:
-            data = kalshi.get_market(ticker)
-            market = data.get('market', data)
-            status = market.get('status', '')
-            if status not in ('finalized', 'settled', 'resolved', 'determined'):
-                continue
-            result = market.get('result', '')
-            if not result:
-                continue
-            won = (side == 'yes' and result == 'yes') or (side == 'no' and result == 'no')
+            if ticker.startswith('0x'):
+                # Polymarket — sprawdź przez własne API
+                if poly_client is None:
+                    poly_client = PolymarketClient()
+                m = poly_client.get_market_by_id(ticker)
+                if not m:
+                    continue
+                if m.get('active', True) or not m.get('closed', False):
+                    continue
+                prices = json.loads(m.get('outcomePrices', '[0,1]'))
+                yes_won = float(prices[0]) > 0.99
+                result_str = 'yes' if yes_won else 'no'
+                won = (side == 'yes' and yes_won) or (side == 'no' and not yes_won)
+            else:
+                # Kalshi
+                data = kalshi.get_market(ticker)
+                market_data = data.get('market', data)
+                status = market_data.get('status', '')
+                if status not in ('finalized', 'settled', 'resolved', 'determined'):
+                    continue
+                result_str = market_data.get('result', '')
+                if not result_str:
+                    continue
+                won = (side == 'yes' and result_str == 'yes') or (side == 'no' and result_str == 'no')
+
             pnl = trader.settle_position(order_id, won)
             settled += 1
-            log.info("settle.done", ticker=ticker, side=side, result=result, won=won, pnl=pnl)
+            log.info("settle.done", ticker=ticker, side=side, result=result_str, won=won, pnl=pnl)
             emoji = "✅" if won else "❌"
             reporter.send(
                 f"{emoji} *Zakład rozstrzygnięty*\n"
                 f"📌 {title or ticker}\n"
-                f"Strona: {side.upper()} | Wynik rynku: {result.upper()}\n"
+                f"Strona: {side.upper()} | Wynik rynku: {result_str.upper()}\n"
                 f"P&L: ${pnl:+.2f}\n"
                 f"Bankroll: ${trader.get_bankroll():.2f}"
             )
         except Exception as e:
             err = str(e)
-            if "404" in err:
-                # Rynek usunięty z Kalshi — zamknij pozycję jako nierozstrzygniętą
-                import sqlite3
+            if "404" in err and not ticker.startswith('0x'):
+                # Rynek usunięty z Kalshi — anuluj pozycję
                 conn2 = sqlite3.connect(trader.db_path)
                 conn2.execute("UPDATE trades SET status='cancelled' WHERE order_id=?", (order_id,))
                 conn2.commit()

@@ -71,3 +71,20 @@ class PolymarketClient:
         results.sort(key=lambda x: x["volume_24h"], reverse=True)
         log.info("polymarket.markets_fetched", count=len(results), max_days=max_days)
         return results
+
+    def get_market_by_id(self, condition_id: str) -> dict | None:
+        """Pobiera szczegóły rynku po conditionId — do rozliczania zakładów."""
+        try:
+            resp = self.session.get(
+                f"{GAMMA_API}/markets",
+                params={"conditionId": condition_id},
+                timeout=10,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            if isinstance(data, list) and data:
+                return data[0]
+            return None
+        except Exception as e:
+            log.warning("polymarket.get_market_error", condition_id=condition_id, error=str(e))
+            return None
