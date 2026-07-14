@@ -2,8 +2,12 @@
 # Wysyła powiadomienia Telegram dla Kalshi Evo
 # Użycie: health_notify.sh crash | health_notify.sh status
 
-TOKEN="***TELEGRAM_TOKEN_USUNIETY***"
-CHAT_ID="8821116926"
+set -a
+source /home/claude-runner/kalshi-evo/.env
+set +a
+
+TOKEN="${TELEGRAM_BOT_TOKEN}"
+CHAT_ID="${TELEGRAM_CHAT_ID}"
 DB="/home/claude-runner/kalshi-evo/memory/trade_history.db"
 LOG="/home/claude-runner/kalshi-evo/logs/service.log"
 MODE="${1:-status}"
