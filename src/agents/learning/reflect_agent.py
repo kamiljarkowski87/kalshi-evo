@@ -66,18 +66,23 @@ def run_weekly_reflection(db_path: str, reflections_path: str) -> dict:
                     "edge": t[4], "outcome": t[5], "pnl": t[6], "sources": t[7], "debate_quality": t[8]}
                    for t in trades]
 
-    resp = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=800,
-        system=REFLECT_SYSTEM,
-        messages=[{"role": "user", "content": f"Przeanalizuj zakłady:\n{json.dumps(trades_data, indent=2)}"}],
-    )
-    text = resp.content[0].text.strip()
-    if text.startswith("```"):
-        text = text.split("```")[1]
-        if text.startswith("json"):
-            text = text[4:]
-    reflection = json.loads(text)
+    try:
+        resp = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=2000,
+            system=REFLECT_SYSTEM,
+            messages=[{"role": "user", "content": f"Przeanalizuj zakłady:\n{json.dumps(trades_data, indent=2)}"}],
+        )
+        text = resp.content[0].text.strip()
+        if text.startswith("```"):
+            text = text.split("```")[1]
+            if text.startswith("json"):
+                text = text[4:]
+        reflection = json.loads(text)
+    except Exception as e:
+        log.warning("reflect.weekly.error", error=str(e))
+        return {"status": "error", "trades_count": len(trades)}
+
     reflection['generated_at'] = datetime.now().isoformat()
     reflection['trades_analyzed'] = len(trades)
     reflection['type'] = 'weekly'

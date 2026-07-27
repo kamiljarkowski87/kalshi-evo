@@ -336,7 +336,7 @@ def send_daily_report(trader: PaperTrader, tracker: PerformanceTracker,
 
 def run_weekly_jobs(config: Config, reporter: TelegramReporter) -> None:
     reflection = run_weekly_reflection(config.db_path, config.reflections_path)
-    if reflection.get('status') != 'insufficient_data':
+    if reflection.get('status') not in ('insufficient_data', 'error'):
         reporter.send_weekly_reflection(reflection)
     calibration = run_calibration_check(config.db_path)
     evaluate_sources(config.db_path, config.source_weights_path)
